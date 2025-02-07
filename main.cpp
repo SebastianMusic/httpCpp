@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <vector>
 
 void sendContent(int fd, std::string path, std::string contentType) {
   std::string httpHeader = "HTTP/1.1 200 OK\r\n"
@@ -109,27 +110,32 @@ int main() {
   if (listen(serverSocket, 128) < 0) {
     perror("listen failed");
   }
-  std::string indexHtml = "GET / HTTP/1.1";
-  std::string styleCss = "GET /style.css HTTP/1.1";
+  struct Route {
+    std::string request;
+    std::string path;
+    std::string type;
+  };
+  std::vector<Route> routes{
+      {"GET / HTTP/1.1", "/home/sebastian/kode/cpp/index.html", "text/html"},
+      {"GET /test.html HTTP/1.1", "/home/sebastian/kode/cpp/test.html",
+       "text/html"},
+      {"GET /style.css HTTP/1.1", "/home/sebastian/kode/cpp/style.css",
+       "text/css"}};
+
+  // Listening loop
   while (true) {
     char RBuf[1000];
     int clientSocket = accept(serverSocket, 0, 0);
     if (read(clientSocket, RBuf, sizeof(RBuf)) < 0) {
       perror("Failed in read");
     }
-    if ((memmem(RBuf, sizeof(RBuf), indexHtml.c_str(), indexHtml.length())) !=
-        NULL) {
-      std::cout << "sending html";
-      sendContent(clientSocket, "/home/sebastian/kode/cpp/index.html",
-                  "text/html");
-    }
 
-    if ((memmem(RBuf, sizeof(RBuf), styleCss.c_str(), indexHtml.length())) !=
-        NULL) {
-      std::cout << "sending css";
-      sendContent(clientSocket, "/home/sebastian/kode/cpp/style.css",
-                  "text/css");
-      return 0;
+    for (const auto route : routes) {
+      if ((memmem(RBuf, 100, route.request.c_str(), route.request.length())) !=
+          NULL) {
+        std::cout << "sending html";
+        sendContent(clientSocket, route.path, route.type);
+      }
     }
 
     write(1, RBuf, sizeof(RBuf));
