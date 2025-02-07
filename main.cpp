@@ -1,3 +1,4 @@
+#include <asm-generic/socket.h>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
@@ -11,10 +12,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-void sendHtml(int fd, std::string path) {
+void sendContent(int fd, std::string path, std::string contentType) {
   std::string httpHeader = "HTTP/1.1 200 OK\r\n"
                            "Content-Length: CONTENTLENGTHREPLACE\r\n"
-                           "Content-Type: text/html\r\n"
+                           "Content-Type: CONTENTTYPEREPLACE\r\n"
                            "Connection: close\r\n"
                            "\r\n";
   // calculate the size of the html file
@@ -33,23 +34,35 @@ void sendHtml(int fd, std::string path) {
   size_t fileSize = statBuffer.st_size;
   std::string fileSizeString = std::to_string(fileSize);
 
-  size_t pos = httpHeader.find("CONTENTLENGTHREPLACE");
+  size_t contentPos = httpHeader.find("CONTENTLENGTHREPLACE");
 
-  if (pos != std::string::npos) {
-    httpHeader.replace(pos, std::strlen("CONTENTLENGTHREPLACE"),
+  if (contentPos != std::string::npos) {
+    httpHeader.replace(contentPos, std::strlen("CONTENTLENGTHREPLACE"),
                        fileSizeString);
   }
+
+  size_t typePos = httpHeader.find("CONTENTTYPEREPLACE");
+
+  if (typePos != std::string::npos) {
+    httpHeader.replace(typePos, std::strlen("CONTENTTYPEREPLACE"), contentType);
+  }
+
   size_t httpHeaderLen = httpHeader.length();
   memcpy(sendBuffer, httpHeader.c_str(), httpHeaderLen);
 
   if (read(htmlFd, sendBuffer + httpHeaderLen, fileSize) < 0) {
     perror("sendHtml failed in read");
   }
+
   if (write(fd, sendBuffer, httpHeaderLen + fileSize) < 0) {
     perror("sendHtml failed in write");
-
-    std::cout << sendBuffer;
   }
+
+  // Write to stdout
+  if (write(1, sendBuffer, httpHeaderLen + fileSize) < 0) {
+    perror("sendHtml failed in write");
+  }
+  close(htmlFd);
 }
 
 struct clientMessage {
@@ -83,6 +96,9 @@ int main() {
 
   int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
   std::cout << "server socket file descriptor is " << serverSocket << std::endl;
+  int opt = 1;
+  setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
   if (bind(serverSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) ==
       -1) {
 
@@ -93,9 +109,30 @@ int main() {
   if (listen(serverSocket, 128) < 0) {
     perror("listen failed");
   }
+  std::string indexHtml = "GET / HTTP/1.1";
+  std::string styleCss = "GET /style.css HTTP/1.1";
+  while (true) {
+    char RBuf[1000];
+    int clientSocket = accept(serverSocket, 0, 0);
+    if (read(clientSocket, RBuf, sizeof(RBuf)) < 0) {
+      perror("Failed in read");
+    }
+    if ((memmem(RBuf, sizeof(RBuf), indexHtml.c_str(), indexHtml.length())) !=
+        NULL) {
+      std::cout << "sending html";
+      sendContent(clientSocket, "/home/sebastian/kode/cpp/index.html",
+                  "text/html");
+    }
 
-  int clientSocket = accept(serverSocket, 0, 0);
+    if ((memmem(RBuf, sizeof(RBuf), styleCss.c_str(), indexHtml.length())) !=
+        NULL) {
+      std::cout << "sending css";
+      sendContent(clientSocket, "/home/sebastian/kode/cpp/style.css",
+                  "text/css");
+      return 0;
+    }
 
-  sendHtml(clientSocket, "/home/sebastian/kode/cpp/index.html\0");
+    write(1, RBuf, sizeof(RBuf));
+  }
   return 0;
 }
