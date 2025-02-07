@@ -8,27 +8,28 @@
 #include <unistd.h>
 
 struct clientMessage {
-  char header[100];
-  char content[5];
+  char msg[100];
 };
 
 int main() {
   clientMessage msg;
 
   const char *httpHeader = "HTTP/1.1 200 OK\r\n"
-                           "Content-Length: 5\r\n"
+                           "Content-Length: 6\r\n"
                            "Content-Type: text/plain\r\n"
-                           "Connection: close\r\n\r\n";
+                           "Connection: close\r\n"
+                           "\r\n";
 
-  const char *httpContent = "halla";
+  const char *httpContent = "halla\n";
 
   size_t httpHeaderLen = strlen(httpHeader);
   size_t httpContentLen = strlen(httpContent);
+  size_t totalLen = httpHeaderLen + httpContentLen;
 
-  memcpy(msg.header, httpHeader,
+  memcpy(msg.msg, httpHeader,
          httpHeaderLen); // copies only specified memory no extra nullbyte
                          // padding like strncpy
-  memcpy(msg.content, httpContent, httpContentLen);
+  memcpy(msg.msg + httpHeaderLen, httpContent, httpContentLen);
 
   struct sockaddr_in serverAddr{};
   serverAddr.sin_family = AF_INET;
@@ -50,7 +51,8 @@ int main() {
 
   int clientSocket = accept(serverSocket, 0, 0);
 
-  write(clientSocket, &msg, sizeof(msg));
+  write(1, &msg, totalLen);
+  write(clientSocket, &msg, totalLen);
 
   return 0;
 }
